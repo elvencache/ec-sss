@@ -23,6 +23,18 @@ int ModHelper (float a, float b)
 	return int( a - (b*floor(a/b)));
 }
 
+// from assao sample, cs_assao_prepare_depths.sc
+vec3 NDCToViewspace( vec2 pos, float viewspaceDepth )
+{
+	vec3 ret;
+
+	ret.xy = (u_ndcToViewMul * pos.xy + u_ndcToViewAdd) * viewspaceDepth;
+
+	ret.z = viewspaceDepth;
+
+	return ret;
+}
+
 void main()
 {
 	vec2 texCoord = v_texcoord0;
@@ -34,8 +46,19 @@ void main()
 	vec3 normal = NormalDecode(normalRoughness.xyz);
 	float roughness = normalRoughness.w;
 
+	// transform normal into view space
+	mat4 worldToViewPrev = mat4(
+		u_worldToViewPrev0,
+		u_worldToViewPrev1,
+		u_worldToViewPrev2,
+		u_worldToViewPrev3
+	);
+	vec3 vsNormal = instMul(worldToViewPrev, vec4(normal, 0.0)).xyz;
+
+
 	// read depth and recreate position
-	float depth = texture2D(s_depth, texCoord);
+	float linearDepth = texture2D(s_depth, texCoord);
+	vec3 viewSpacePosition = NDCToViewspace(texCoord, linearDepth);
 
 	float shadow = texture2D(s_shadows, texCoord).x;
 
@@ -43,9 +66,9 @@ void main()
 	float gloss = 1.0-roughness;
 	float specPower = 62.0 * gloss + 2.0;
 
-	vec3 light = normalize(u_lightPosition);
+	vec3 light = normalize(u_lightPosition - viewSpacePosition);
 	//vec3 light = normalize(vec3(-0.2, 1.0, -0.2));
-	float NdotL = saturate(dot(normal, light));
+	float NdotL = saturate(dot(vsNormal, light));
 	float ambient = 0.1;
 	float diffuse = NdotL;
 	float specular = 5.0 * pow(NdotL, specPower);

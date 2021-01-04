@@ -13,16 +13,16 @@ SAMPLER2D(s_depth, 0);
 // from assao sample, cs_assao_prepare_depths.sc
 float ScreenSpaceToViewSpaceDepth( float screenDepth )
 {
-    float depthLinearizeMul = u_depthUnpackConsts.x;
-    float depthLinearizeAdd = u_depthUnpackConsts.y;
+	float depthLinearizeMul = u_depthUnpackConsts.x;
+	float depthLinearizeAdd = u_depthUnpackConsts.y;
 
-    // Optimised version of "-cameraClipNear / (cameraClipFar - projDepth * (cameraClipFar - cameraClipNear)) * cameraClipFar"
+	// Optimised version of "-cameraClipNear / (cameraClipFar - projDepth * (cameraClipFar - cameraClipNear)) * cameraClipFar"
 
-    // Set your depthLinearizeMul and depthLinearizeAdd to:
-    // depthLinearizeMul = ( cameraClipFar * cameraClipNear) / ( cameraClipFar - cameraClipNear );
-    // depthLinearizeAdd = cameraClipFar / ( cameraClipFar - cameraClipNear );
+	// Set your depthLinearizeMul and depthLinearizeAdd to:
+	// depthLinearizeMul = ( cameraClipFar * cameraClipNear) / ( cameraClipFar - cameraClipNear );
+	// depthLinearizeAdd = cameraClipFar / ( cameraClipFar - cameraClipNear );
 
-    return depthLinearizeMul / ( depthLinearizeAdd - screenDepth );
+	return depthLinearizeMul / ( depthLinearizeAdd - screenDepth );
 }
 
 

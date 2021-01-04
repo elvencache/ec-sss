@@ -71,7 +71,7 @@ bgfx::VertexLayout PosTexCoord0Vertex::ms_layout;
 
 struct Uniforms
 {
-	enum { NumVec4 = 13 };
+	enum { NumVec4 = 14 };
 
 	void init() {
 		u_params = bgfx::createUniform("u_params", bgfx::UniformType::Vec4, NumVec4);
@@ -95,7 +95,8 @@ struct Uniforms
 			/*  3-6  */ struct { float m_worldToViewPrev[16]; };
 			/*  7-10 */ struct { float m_viewToProjPrev[16]; };
 			/*  11   */ struct { float m_depthUnpackConsts[2]; float m_unused11[2]; };
-			/*  12   */ struct { float m_lightPosition[3]; float m_unused12; };
+			/*  12   */ struct { float m_ndcToViewMul[2]; float m_ndcToViewAdd[2]; };
+			/*  13   */ struct { float m_lightPosition[3]; float m_unused13; };
 		};
 
 		float m_params[NumVec4 * 4];
@@ -491,7 +492,7 @@ public:
 					);
 				bgfx::setTexture(0, s_color, m_gbufferTex[GBUFFER_RT_COLOR]);
 				bgfx::setTexture(1, s_normal, m_gbufferTex[GBUFFER_RT_NORMAL]);
-				bgfx::setTexture(2, s_depth, m_gbufferTex[GBUFFER_RT_DEPTH]);
+				bgfx::setTexture(2, s_depth, m_linearDepth.m_texture);
 				bgfx::setTexture(3, s_shadows, m_shadows.m_texture);
 				m_uniforms.submit();
 				screenSpaceQuad(float(m_width), float(m_height), m_texelHalf, caps->originBottomLeft);
@@ -838,11 +839,30 @@ public:
 			}
 
 			vec2Set(m_uniforms.m_depthUnpackConsts, depthLinearizeMul, depthLinearizeAdd);
+
+			float tanHalfFOVY = 1.0f / m_proj2[1*4+1];    // = tanf( drawContext.Camera.GetYFOV( ) * 0.5f );
+			float tanHalfFOVX = 1.0F / m_proj2[0];    // = tanHalfFOVY * drawContext.Camera.GetAspect( );
+
+			if (bgfx::getRendererType() == bgfx::RendererType::OpenGL)
+			{
+				vec2Set(m_uniforms.m_ndcToViewMul, tanHalfFOVX * 2.0f, tanHalfFOVY * 2.0f);
+				vec2Set(m_uniforms.m_ndcToViewAdd, tanHalfFOVX * -1.0f, tanHalfFOVY * -1.0f);
+			}
+			else
+			{
+				vec2Set(m_uniforms.m_ndcToViewMul, tanHalfFOVX * 2.0f, tanHalfFOVY * -2.0f);
+				vec2Set(m_uniforms.m_ndcToViewAdd, tanHalfFOVX * -1.0f, tanHalfFOVY * 1.0f);
+			}
 		}
 
-		m_uniforms.m_lightPosition[0] = m_lightModel.position[0];
-		m_uniforms.m_lightPosition[1] = m_lightModel.position[1];
-		m_uniforms.m_lightPosition[2] = m_lightModel.position[2];
+		{
+			float lightPosition[4];
+			bx::memCopy(lightPosition, m_lightModel.position, 3*sizeof(float));
+			lightPosition[3] = 1.0f;
+			float viewSpaceLightPosition[4];
+			bx::vec4MulMtx(viewSpaceLightPosition, lightPosition, m_view);
+			bx::memCopy(m_uniforms.m_lightPosition, viewSpaceLightPosition, 3*sizeof(float));
+		}
 	}
 
 

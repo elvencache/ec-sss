@@ -38,8 +38,8 @@ void main()
 
 	// Transform normal into world space
 	vec3 wsNormal = mul(u_model[0], vec4(osNormal, 0.0)).xyz;
-
 	v_normal.xyz = normalize(wsNormal);
+
 	v_texcoord0 = a_texcoord0;
 
 	// Store previous frame projection space position in extra texCoord attribute
