@@ -30,6 +30,7 @@ namespace {
 
 static const char * s_meshPaths[] =
 {
+	"meshes/unit_sphere.bin",
 	"meshes/column.bin",
 	"meshes/tree.bin",
 	"meshes/hollowcube.bin",
@@ -38,6 +39,7 @@ static const char * s_meshPaths[] =
 
 static const float s_meshScale[] =
 {
+	0.25f,
 	0.05f,
 	0.15f,
 	0.25f,
@@ -69,7 +71,7 @@ bgfx::VertexLayout PosTexCoord0Vertex::ms_layout;
 
 struct Uniforms
 {
-	enum { NumVec4 = 11 };
+	enum { NumVec4 = 13 };
 
 	void init() {
 		u_params = bgfx::createUniform("u_params", bgfx::UniformType::Vec4, NumVec4);
@@ -92,6 +94,8 @@ struct Uniforms
 			/*  2    */ struct { float m_unused2; float m_applyMitchellFilter; float m_options[2]; };
 			/*  3-6  */ struct { float m_worldToViewPrev[16]; };
 			/*  7-10 */ struct { float m_viewToProjPrev[16]; };
+			/*  11   */ struct { float m_depthUnpackConsts[2]; float m_unused11[2]; };
+			/*  12   */ struct { float m_lightPosition[3]; float m_unused12; };
 		};
 
 		float m_params[NumVec4 * 4];
@@ -196,10 +200,10 @@ void mat4Set(float * _m, const float * _src)
 	}
 }
 
-class ExampleDenoise : public entry::AppI
+class ExampleScreenSpaceShadows : public entry::AppI
 {
 public:
-	ExampleDenoise(const char* _name, const char* _description)
+	ExampleScreenSpaceShadows(const char* _name, const char* _description)
 		: entry::AppI(_name, _description)
 		, m_currFrame(UINT32_MAX)
 		, m_texelHalf(0.0f)
@@ -241,6 +245,7 @@ public:
 
 		// Create program from shaders.
 		m_gbufferProgram = loadProgram("vs_sss_gbuffer", "fs_sss_gbuffer"); // Fill gbuffer
+		m_linearDepthProgram = loadProgram("vs_sss_screenquad", "fs_sss_linear_depth");
 		m_shadowsProgram = loadProgram("vs_sss_screenquad", "fs_screen_space_shadows");
 		m_combineProgram = loadProgram("vs_sss_screenquad", "fs_sss_deferred_combine"); // Compute lighting from gbuffer
 		m_copyProgram = loadProgram("vs_sss_screenquad", "fs_sss_copy");
@@ -251,6 +256,9 @@ public:
 		{
 			m_meshes[ii] = meshLoad(s_meshPaths[ii]);
 		}
+
+		// sphere is first mesh
+		m_lightModel.mesh = 0;
 
 		// Randomly create some models
 		bx::RngMwc mwc;
@@ -310,6 +318,7 @@ public:
 		bgfx::destroy(m_groundTexture);
 
 		bgfx::destroy(m_gbufferProgram);
+		bgfx::destroy(m_linearDepthProgram);
 		bgfx::destroy(m_shadowsProgram);
 		bgfx::destroy(m_combineProgram);
 		bgfx::destroy(m_copyProgram);
@@ -363,6 +372,17 @@ public:
 				createFramebuffers();
 				m_recreateFrameBuffers = false;
 			}
+
+			// rotate light
+			const float rotationSpeed = 1.0f;
+			m_lightRotation += deltaTime * rotationSpeed;
+			if (bx::kPi2 < m_lightRotation)
+			{
+				m_lightRotation -= bx::kPi2;
+			}
+			m_lightModel.position[0] = bx::cos(m_lightRotation) * 3.0f;
+			m_lightModel.position[1] = 1.5f;
+			m_lightModel.position[2] = bx::sin(m_lightRotation) * 3.0f;
 
 			// Update camera
 			cameraUpdate(deltaTime*0.15f, m_mouseState);
@@ -418,6 +438,25 @@ public:
 				bgfx::setTransform(identity);
 			}
 
+			// Convert depth to linear depth for shadow depth compare
+			{
+				bgfx::setViewName(view, "linear depth");
+
+				bgfx::setViewRect(view, 0, 0, uint16_t(m_width), uint16_t(m_height));
+				bgfx::setViewTransform(view, NULL, orthoProj);
+				bgfx::setViewFrameBuffer(view, m_linearDepth.m_buffer);
+				bgfx::setState(0
+					| BGFX_STATE_WRITE_RGB
+					| BGFX_STATE_WRITE_A
+					| BGFX_STATE_DEPTH_TEST_ALWAYS
+					);
+				bgfx::setTexture(0, s_depth, m_gbufferTex[GBUFFER_RT_DEPTH]);
+				m_uniforms.submit();
+				screenSpaceQuad(float(m_width), float(m_height), m_texelHalf, caps->originBottomLeft);
+				bgfx::submit(view, m_linearDepthProgram);
+				++view;
+			}
+
 			// Do screen space shadows
 			{
 				bgfx::setViewName(view, "screen space shadows");
@@ -430,7 +469,7 @@ public:
 					| BGFX_STATE_WRITE_A
 					| BGFX_STATE_DEPTH_TEST_ALWAYS
 					);
-				bgfx::setTexture(0, s_depth, m_gbufferTex[GBUFFER_RT_DEPTH]);
+				bgfx::setTexture(0, s_depth, m_linearDepth.m_texture);
 				//bgfx::setTexture(1, s_normal, m_gbufferTex[GBUFFER_RT_NORMAL]);
 				m_uniforms.submit();
 				screenSpaceQuad(float(m_width), float(m_height), m_texelHalf, caps->originBottomLeft);
@@ -452,7 +491,8 @@ public:
 					);
 				bgfx::setTexture(0, s_color, m_gbufferTex[GBUFFER_RT_COLOR]);
 				bgfx::setTexture(1, s_normal, m_gbufferTex[GBUFFER_RT_NORMAL]);
-				bgfx::setTexture(2, s_shadows, m_shadows.m_texture);
+				bgfx::setTexture(2, s_depth, m_gbufferTex[GBUFFER_RT_DEPTH]);
+				bgfx::setTexture(3, s_shadows, m_shadows.m_texture);
 				m_uniforms.submit();
 				screenSpaceQuad(float(m_width), float(m_height), m_texelHalf, caps->originBottomLeft);
 				bgfx::submit(view, m_combineProgram);
@@ -633,6 +673,30 @@ public:
 
 	void drawAllModels(bgfx::ViewId _pass, bgfx::ProgramHandle _program, const Uniforms & _uniforms)
 	{
+		// draw sphere to visualize light
+		{
+			const float scale = s_meshScale[m_lightModel.mesh];
+			float mtx[16];
+			bx::mtxSRT(mtx
+				, scale
+				, scale
+				, scale
+				, 0.0f
+				, 0.0f
+				, 0.0f
+				, m_lightModel.position[0]
+				, m_lightModel.position[1]
+				, m_lightModel.position[2]
+				);
+
+			// Submit mesh to gbuffer
+			bgfx::setTexture(0, s_albedo, m_groundTexture);
+			bgfx::setTexture(1, s_normal, m_normalTexture);
+			_uniforms.submit();
+
+			meshSubmit(m_meshes[m_lightModel.mesh], _pass, _program, mtx);
+		}
+
 		for (uint32_t ii = 0; ii < BX_COUNTOF(m_models); ++ii)
 		{
 			const Model& model = m_models[ii];
@@ -706,6 +770,7 @@ public:
 
 		m_currentColor.init(m_size[0], m_size[1], bgfx::TextureFormat::RG11B10F, bilinearFlags);
 		m_previousColor.init(m_size[0], m_size[1], bgfx::TextureFormat::RG11B10F, bilinearFlags);
+		m_linearDepth.init(m_size[0], m_size[1], bgfx::TextureFormat::R16F, bilinearFlags);
 		m_shadows.init(m_size[0], m_size[1], bgfx::TextureFormat::R16F, bilinearFlags);
 		m_txaaColor.init(m_size[0], m_size[1], bgfx::TextureFormat::RG11B10F, bilinearFlags);
 	}
@@ -717,6 +782,7 @@ public:
 
 		m_currentColor.destroy();
 		m_previousColor.destroy();
+		m_linearDepth.destroy();
 		m_shadows.destroy();
 		m_txaaColor.destroy();
 	}
@@ -756,6 +822,27 @@ public:
 
 		mat4Set(m_uniforms.m_worldToViewPrev, m_worldToViewPrev);
 		mat4Set(m_uniforms.m_viewToProjPrev, m_viewToProjPrev);
+
+		// from assao sample, cs_assao_prepare_depths.sc
+		{
+			// float depthLinearizeMul = ( clipFar * clipNear ) / ( clipFar - clipNear );
+			// float depthLinearizeAdd = clipFar / ( clipFar - clipNear );
+			// correct the handedness issue. need to make sure this below is correct, but I think it is.
+
+			float depthLinearizeMul = -m_proj2[3*4+2];
+			float depthLinearizeAdd =  m_proj2[2*4+2];
+
+			if (depthLinearizeMul * depthLinearizeAdd < 0)
+			{
+				depthLinearizeAdd = -depthLinearizeAdd;
+			}
+
+			vec2Set(m_uniforms.m_depthUnpackConsts, depthLinearizeMul, depthLinearizeAdd);
+		}
+
+		m_uniforms.m_lightPosition[0] = m_lightModel.position[0];
+		m_uniforms.m_lightPosition[1] = m_lightModel.position[1];
+		m_uniforms.m_lightPosition[2] = m_lightModel.position[2];
 	}
 
 
@@ -768,6 +855,7 @@ public:
 
 	// Resource handles
 	bgfx::ProgramHandle m_gbufferProgram;
+	bgfx::ProgramHandle m_linearDepthProgram;
 	bgfx::ProgramHandle m_shadowsProgram;
 	bgfx::ProgramHandle m_combineProgram;
 	bgfx::ProgramHandle m_copyProgram;
@@ -790,6 +878,7 @@ public:
 
 	RenderTarget m_currentColor;
 	RenderTarget m_previousColor;
+	RenderTarget m_linearDepth;
 	RenderTarget m_shadows;
 	RenderTarget m_txaaColor;
 
@@ -799,6 +888,7 @@ public:
 		float position[3];
 	};
 
+	Model m_lightModel;
 	Model m_models[MODEL_COUNT];
 	Mesh* m_meshes[BX_COUNTOF(s_meshPaths)];
 	Mesh* m_ground;
@@ -806,6 +896,7 @@ public:
 	bgfx::TextureHandle m_normalTexture;
 
 	uint32_t m_currFrame;
+	float m_lightRotation = 0.0f;
 	float m_texelHalf = 0.0f;
 	float m_fovY = 60.0f;
 	bool m_recreateFrameBuffers = false;
@@ -829,4 +920,4 @@ public:
 
 } // namespace
 
-ENTRY_IMPLEMENT_MAIN(ExampleDenoise, "xx-sss", "Screen Space Shadows.");
+ENTRY_IMPLEMENT_MAIN(ExampleScreenSpaceShadows, "xx-sss", "Screen Space Shadows.");

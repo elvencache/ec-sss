@@ -23,4 +23,7 @@ uniform vec4 u_params[13];
 #define u_viewToProjPrev2			(u_params[9])
 #define u_viewToProjPrev3			(u_params[10])
 
+#define u_depthUnpackConsts			(u_params[11].xy)
+#define u_lightPosition				(u_params[12].xyz)
+
 #endif // PARAMETERS_SH

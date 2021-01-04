@@ -8,11 +8,12 @@ $input v_texcoord0
 #include "../common/common.sh"
 #include "parameters.sh"
 
-SAMPLER2D(s_color, 0);
+SAMPLER2D(s_depth, 0);
 
 void main()
 {
 	vec2 texCoord = v_texcoord0;
-	vec4 color = texture2D(s_color, texCoord);
+	float depth = texture2D(s_depth, texCoord).x;
+
 	gl_FragColor = vec4_splat(1.0);
 }

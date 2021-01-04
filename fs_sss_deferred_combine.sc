@@ -11,7 +11,8 @@ $input v_texcoord0
 
 SAMPLER2D(s_color, 0);
 SAMPLER2D(s_normal, 1);
-SAMPLER2D(s_shadows, 2);
+SAMPLER2D(s_depth, 2);
+SAMPLER2D(s_shadows, 3);
 
 float ShadertoyNoise (vec2 uv) {
 	return fract(sin(dot(uv.xy, vec2(12.9898,78.233))) * 43758.5453123);
@@ -33,13 +34,17 @@ void main()
 	vec3 normal = NormalDecode(normalRoughness.xyz);
 	float roughness = normalRoughness.w;
 
+	// read depth and recreate position
+	float depth = texture2D(s_depth, texCoord);
+
 	float shadow = texture2D(s_shadows, texCoord).x;
 
 	// need to get a valid view vector for any microfacet stuff :(
 	float gloss = 1.0-roughness;
 	float specPower = 62.0 * gloss + 2.0;
 
-	vec3 light = normalize(vec3(-0.2, 1.0, -0.2));
+	vec3 light = normalize(u_lightPosition);
+	//vec3 light = normalize(vec3(-0.2, 1.0, -0.2));
 	float NdotL = saturate(dot(normal, light));
 	float ambient = 0.1;
 	float diffuse = NdotL;
@@ -49,7 +54,6 @@ void main()
 
 	color = (color * lightAmount);
 	color = color / (color + vec3_splat(1.0));
-
 	color = toGamma(color);
 
 	gl_FragColor = vec4(color * lightAmount, 1.0);
