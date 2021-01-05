@@ -57,14 +57,14 @@ void main()
 		float sampleDepth = texture2D(s_depth, sampleCoord).x;
 
 		float delta = (samplePosition.z - sampleDepth);
-		if (0.0 < delta)
+		if (1e-5 < delta)
 		{
 			firstHit = min(firstHit, float(i));
 			lastHit = max(lastHit, float(i));
-			occluded += 1.0;
+			occluded += saturate(SHADOW_RADIUS - delta);//1.0;
 		}
 	}
-	occluded = (SHADOW_STEPS - firstHit) / SHADOW_STEPS;
+	occluded *= (SHADOW_STEPS - firstHit) / SHADOW_STEPS;
 
 	gl_FragColor = vec4_splat(1.0-occluded);
 }
