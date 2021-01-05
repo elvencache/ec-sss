@@ -22,7 +22,8 @@ vec3 NDCToViewspace( vec2 pos, float viewspaceDepth )
 	return ret;
 }
 
-#define LIGHT_STEPS		32
+#define SHADOW_RADIUS	0.25
+#define SHADOW_STEPS	16
 
 void main()
 {
@@ -33,18 +34,37 @@ void main()
 	vec3 toLight = u_lightPosition - viewSpacePosition;
 	vec3 light = normalize(toLight);
 
-	vec3 debugColor = light * 0.5 + 0.5;
+	vec3 lightStep = normalize(toLight) * (SHADOW_RADIUS / float(SHADOW_STEPS));
 
-	// add drop shadow below light, y is up
-	mat4 worldToView = mat4(
-		u_worldToView0,
-		u_worldToView1,
-		u_worldToView2,
-		u_worldToView3
+	float occluded = 0.0;
+	vec3 samplePosition = viewSpacePosition;
+	mat4 viewToProj = mat4(
+		u_viewToProj0,
+		u_viewToProj1,
+		u_viewToProj2,
+		u_viewToProj3
 	);
-	vec3 worldUpInViewSpace = instMul(worldToView, vec4(0.0, 1.0, 0.0, 0.0)).xyz;
-	float shadow = 1.0 - smoothstep(0.95, 1.0, dot(light, worldUpInViewSpace));
-	debugColor *= shadow;
 
-	gl_FragColor = vec4(debugColor, 1.0);
+	float firstHit = float(SHADOW_STEPS);
+	float lastHit = -1.0;
+	for (int i = 0; i < SHADOW_STEPS; ++i)
+	{
+		samplePosition += lightStep;
+		vec3 psSamplePosition = instMul(viewToProj, vec4(samplePosition, 1.0)).xyw;
+		psSamplePosition.xy *= (1.0/psSamplePosition.z);
+		vec2 sampleCoord = psSamplePosition.xy * 0.5 + 0.5;
+		sampleCoord.y = 1.0 - sampleCoord.y;
+		float sampleDepth = texture2D(s_depth, sampleCoord).x;
+
+		float delta = (samplePosition.z - sampleDepth);
+		if (0.0 < delta)
+		{
+			firstHit = min(firstHit, float(i));
+			lastHit = max(lastHit, float(i));
+			occluded += 1.0;
+		}
+	}
+	occluded = (SHADOW_STEPS - firstHit) / SHADOW_STEPS;
+
+	gl_FragColor = vec4_splat(1.0-occluded);
 }

@@ -71,7 +71,7 @@ bgfx::VertexLayout PosTexCoord0Vertex::ms_layout;
 
 struct Uniforms
 {
-	enum { NumVec4 = 18 };
+	enum { NumVec4 = 22 };
 
 	void init() {
 		u_params = bgfx::createUniform("u_params", bgfx::UniformType::Vec4, NumVec4);
@@ -98,6 +98,7 @@ struct Uniforms
 			/* 12    */ struct { float m_ndcToViewMul[2]; float m_ndcToViewAdd[2]; };
 			/* 13    */ struct { float m_lightPosition[3]; float m_unused13; };
 			/* 14-17 */ struct { float m_worldToView[16]; }; // built-in u_view will be transform for quad during screen passes
+			/* 18-21 */ struct { float m_viewToProj[16]; };	 // built-in u_proj will be transform for quad during screen passes
 		};
 
 		float m_params[NumVec4 * 4];
@@ -825,6 +826,7 @@ public:
 		mat4Set(m_uniforms.m_worldToViewPrev, m_worldToViewPrev);
 		mat4Set(m_uniforms.m_viewToProjPrev, m_viewToProjPrev);
 		mat4Set(m_uniforms.m_worldToView, m_view);
+		mat4Set(m_uniforms.m_viewToProj, m_proj);
 
 		// from assao sample, cs_assao_prepare_depths.sc
 		{
