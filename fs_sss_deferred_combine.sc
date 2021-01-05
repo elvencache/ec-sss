@@ -47,13 +47,13 @@ void main()
 	float roughness = normalRoughness.w;
 
 	// transform normal into view space
-	mat4 worldToViewPrev = mat4(
-		u_worldToViewPrev0,
-		u_worldToViewPrev1,
-		u_worldToViewPrev2,
-		u_worldToViewPrev3
+	mat4 worldToView = mat4(
+		u_worldToView0,
+		u_worldToView1,
+		u_worldToView2,
+		u_worldToView3
 	);
-	vec3 vsNormal = instMul(worldToViewPrev, vec4(normal, 0.0)).xyz;
+	vec3 vsNormal = instMul(worldToView, vec4(normal, 0.0)).xyz;
 
 
 	// read depth and recreate position

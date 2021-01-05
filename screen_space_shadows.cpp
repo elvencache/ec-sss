@@ -71,7 +71,7 @@ bgfx::VertexLayout PosTexCoord0Vertex::ms_layout;
 
 struct Uniforms
 {
-	enum { NumVec4 = 14 };
+	enum { NumVec4 = 18 };
 
 	void init() {
 		u_params = bgfx::createUniform("u_params", bgfx::UniformType::Vec4, NumVec4);
@@ -94,9 +94,10 @@ struct Uniforms
 			/*  2    */ struct { float m_unused2; float m_applyMitchellFilter; float m_options[2]; };
 			/*  3-6  */ struct { float m_worldToViewPrev[16]; };
 			/*  7-10 */ struct { float m_viewToProjPrev[16]; };
-			/*  11   */ struct { float m_depthUnpackConsts[2]; float m_unused11[2]; };
-			/*  12   */ struct { float m_ndcToViewMul[2]; float m_ndcToViewAdd[2]; };
-			/*  13   */ struct { float m_lightPosition[3]; float m_unused13; };
+			/* 11    */ struct { float m_depthUnpackConsts[2]; float m_unused11[2]; };
+			/* 12    */ struct { float m_ndcToViewMul[2]; float m_ndcToViewAdd[2]; };
+			/* 13    */ struct { float m_lightPosition[3]; float m_unused13; };
+			/* 14-17 */ struct { float m_worldToView[16]; }; // built-in u_view will be transform for quad during screen passes
 		};
 
 		float m_params[NumVec4 * 4];
@@ -582,7 +583,7 @@ public:
 						| BGFX_STATE_WRITE_RGB
 						| BGFX_STATE_WRITE_A
 						);
-					bgfx::setTexture(0, s_color, lastTex);
+					bgfx::setTexture(0, s_color, m_shadows.m_texture);//lastTex);
 					screenSpaceQuad(float(m_width), float(m_height), m_texelHalf, caps->originBottomLeft);
 					bgfx::submit(view, m_copyProgram);
 					++view;
@@ -772,7 +773,7 @@ public:
 		m_currentColor.init(m_size[0], m_size[1], bgfx::TextureFormat::RG11B10F, bilinearFlags);
 		m_previousColor.init(m_size[0], m_size[1], bgfx::TextureFormat::RG11B10F, bilinearFlags);
 		m_linearDepth.init(m_size[0], m_size[1], bgfx::TextureFormat::R16F, bilinearFlags);
-		m_shadows.init(m_size[0], m_size[1], bgfx::TextureFormat::R16F, bilinearFlags);
+		m_shadows.init(m_size[0], m_size[1], bgfx::TextureFormat::RG11B10F /*R16F*/, bilinearFlags);
 		m_txaaColor.init(m_size[0], m_size[1], bgfx::TextureFormat::RG11B10F, bilinearFlags);
 	}
 
@@ -823,6 +824,7 @@ public:
 
 		mat4Set(m_uniforms.m_worldToViewPrev, m_worldToViewPrev);
 		mat4Set(m_uniforms.m_viewToProjPrev, m_viewToProjPrev);
+		mat4Set(m_uniforms.m_worldToView, m_view);
 
 		// from assao sample, cs_assao_prepare_depths.sc
 		{

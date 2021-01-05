@@ -6,7 +6,7 @@
 #ifndef PARAMETERS_SH
 #define PARAMETERS_SH
 
-uniform vec4 u_params[14];
+uniform vec4 u_params[18];
 
 #define u_jitterCurr				(u_params[0].xy)
 #define u_jitterPrev				(u_params[0].zw)
@@ -27,5 +27,10 @@ uniform vec4 u_params[14];
 #define u_ndcToViewMul				(u_params[12].xy)
 #define u_ndcToViewAdd				(u_params[12].zw)
 #define u_lightPosition				(u_params[13].xyz)
+
+#define u_worldToView0				(u_params[14])
+#define u_worldToView1				(u_params[15])
+#define u_worldToView2				(u_params[16])
+#define u_worldToView3				(u_params[17])
 
 #endif // PARAMETERS_SH
