@@ -90,8 +90,8 @@ struct Uniforms
 		struct
 		{
 			/*  0    */ struct { float m_cameraJitterCurr[2]; float m_cameraJitterPrev[2]; };
-			/*  1    */ struct { float m_feedbackMin; float m_feedbackMax; float m_unused1[2]; };
-			/*  2    */ struct { float m_unused2; float m_applyMitchellFilter; float m_options[2]; };
+			/*  1    */ struct { float m_feedbackMin; float m_feedbackMax; float m_applyMitchellFilter; float m_displayShadows; };
+			/*  2    */ struct { float m_frameIdx; float m_shadowRadius; float m_shadowSteps; float m_useNoiseOffset; };
 			/*  3-6  */ struct { float m_worldToViewPrev[16]; };
 			/*  7-10 */ struct { float m_viewToProjPrev[16]; };
 			/* 11    */ struct { float m_depthUnpackConsts[2]; float m_unused11[2]; };
@@ -377,7 +377,7 @@ public:
 			}
 
 			// rotate light
-			const float rotationSpeed = 1.0f;
+			const float rotationSpeed = m_moveLight ? 1.0f : 0.0f;
 			m_lightRotation += deltaTime * rotationSpeed;
 			if (bx::kPi2 < m_lightRotation)
 			{
@@ -584,7 +584,7 @@ public:
 						| BGFX_STATE_WRITE_RGB
 						| BGFX_STATE_WRITE_A
 						);
-					bgfx::setTexture(0, s_color, m_shadows.m_texture);//lastTex);
+					bgfx::setTexture(0, s_color, lastTex);
 					screenSpaceQuad(float(m_width), float(m_height), m_texelHalf, caps->originBottomLeft);
 					bgfx::submit(view, m_copyProgram);
 					++view;
@@ -626,6 +626,13 @@ public:
 			{
 				ImGui::TextWrapped("screen space shadows");
 				ImGui::Separator();
+
+				ImGui::SliderFloat("shadow radius", &m_shadowRadius, 1e-3f, 1.0f);
+				ImGui::SliderInt("shadow steps", &m_shadowSteps, 1, 64);
+				ImGui::Checkbox("noise offset", &m_useNoiseOffset);
+				ImGui::Checkbox("dynamic noise", &m_dynamicNoise);
+				ImGui::Checkbox("display shadows only", &m_displayShadows);
+				ImGui::Checkbox("move light", &m_moveLight);
 			}
 
 			if (ImGui::CollapsingHeader("TXAA options"))
@@ -822,6 +829,13 @@ public:
 		m_uniforms.m_feedbackMin = m_feedbackMin;
 		m_uniforms.m_feedbackMax = m_feedbackMax;
 		m_uniforms.m_applyMitchellFilter = m_applyMitchellFilter ? 1.0f : 0.0f;
+		m_uniforms.m_displayShadows = m_displayShadows ? 1.0f : 0.0f;
+		m_uniforms.m_frameIdx = m_dynamicNoise
+			? float(m_currFrame % 8)
+			: 0.0f;
+		m_uniforms.m_shadowRadius = m_shadowRadius;
+		m_uniforms.m_shadowSteps = float(m_shadowSteps);
+		m_uniforms.m_useNoiseOffset = m_useNoiseOffset ? 1.0f : 0.0f;
 
 		mat4Set(m_uniforms.m_worldToViewPrev, m_worldToViewPrev);
 		mat4Set(m_uniforms.m_viewToProjPrev, m_viewToProjPrev);
@@ -935,6 +949,13 @@ public:
 	int32_t m_size[2];
 
 	// UI parameters
+	bool m_displayShadows = false;
+	bool m_useNoiseOffset = true;
+	bool m_dynamicNoise = true;
+	float m_shadowRadius = 0.5f;
+	int32_t m_shadowSteps = 8;
+	bool m_moveLight = true;
+
 	bool m_enableTxaa = false;
 	float m_feedbackMin = 0.8f;
 	float m_feedbackMax = 0.95f;

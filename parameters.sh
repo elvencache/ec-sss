@@ -12,7 +12,12 @@ uniform vec4 u_params[22];
 #define u_jitterPrev				(u_params[0].zw)
 #define u_feedbackMin				(u_params[1].x)
 #define u_feedbackMax				(u_params[1].y)
-#define u_applyMitchellFilter		(u_params[2].y)
+#define u_applyMitchellFilter		(u_params[1].z)
+#define u_displayShadows			(u_params[1].w)
+#define u_frameIdx					(u_params[2].x)
+#define u_shadowRadius				(u_params[2].y)
+#define u_shadowSteps				(u_params[2].z)
+#define u_useNoiseOffset			(u_params[2].w)
 
 #define u_worldToViewPrev0			(u_params[3])
 #define u_worldToViewPrev1			(u_params[4])

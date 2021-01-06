@@ -22,8 +22,9 @@ vec3 NDCToViewspace( vec2 pos, float viewspaceDepth )
 	return ret;
 }
 
-#define SHADOW_RADIUS	0.25
-#define SHADOW_STEPS	16
+float ShadertoyNoise (vec2 uv) {
+	return fract(sin(dot(uv.xy, vec2(12.9898,78.233))) * 43758.5453123);
+}
 
 void main()
 {
@@ -33,11 +34,13 @@ void main()
 
 	vec3 toLight = u_lightPosition - viewSpacePosition;
 	vec3 light = normalize(toLight);
+	vec3 lightStep = normalize(toLight) * (u_shadowRadius / u_shadowSteps);
 
-	vec3 lightStep = normalize(toLight) * (SHADOW_RADIUS / float(SHADOW_STEPS));
-
-	float occluded = 0.0;
 	vec3 samplePosition = viewSpacePosition;
+	float random = ShadertoyNoise(gl_FragCoord.xy + vec2(314.0, 159.0)*u_frameIdx);
+	float initialOffset = (0.0 < u_useNoiseOffset) ? (0.5+random) : 1.0;
+	samplePosition += initialOffset * lightStep;
+
 	mat4 viewToProj = mat4(
 		u_viewToProj0,
 		u_viewToProj1,
@@ -45,13 +48,14 @@ void main()
 		u_viewToProj3
 	);
 
-	float firstHit = float(SHADOW_STEPS);
+	float occluded = 0.0;
+	float firstHit = u_shadowSteps;
 	float lastHit = -1.0;
-	for (int i = 0; i < SHADOW_STEPS; ++i)
+	for (int i = 0; i < int(u_shadowSteps); ++i, samplePosition += lightStep)
 	{
-		samplePosition += lightStep;
 		vec3 psSamplePosition = instMul(viewToProj, vec4(samplePosition, 1.0)).xyw;
 		psSamplePosition.xy *= (1.0/psSamplePosition.z);
+
 		vec2 sampleCoord = psSamplePosition.xy * 0.5 + 0.5;
 		sampleCoord.y = 1.0 - sampleCoord.y;
 		float sampleDepth = texture2D(s_depth, sampleCoord).x;
@@ -61,10 +65,10 @@ void main()
 		{
 			firstHit = min(firstHit, float(i));
 			lastHit = max(lastHit, float(i));
-			occluded += saturate(SHADOW_RADIUS - delta);//1.0;
+			occluded += saturate(u_shadowRadius - delta);
 		}
 	}
-	occluded *= (SHADOW_STEPS - firstHit) / SHADOW_STEPS;
+	occluded *= (u_shadowSteps - firstHit) / u_shadowSteps;
 
 	gl_FragColor = vec4_splat(1.0-occluded);
 }

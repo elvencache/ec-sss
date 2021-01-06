@@ -14,15 +14,6 @@ SAMPLER2D(s_normal, 1);
 SAMPLER2D(s_depth, 2);
 SAMPLER2D(s_shadows, 3);
 
-float ShadertoyNoise (vec2 uv) {
-	return fract(sin(dot(uv.xy, vec2(12.9898,78.233))) * 43758.5453123);
-}
-
-int ModHelper (float a, float b)
-{
-	return int( a - (b*floor(a/b)));
-}
-
 // from assao sample, cs_assao_prepare_depths.sc
 vec3 NDCToViewspace( vec2 pos, float viewspaceDepth )
 {
@@ -61,23 +52,29 @@ void main()
 	vec3 viewSpacePosition = NDCToViewspace(texCoord, linearDepth);
 
 	float shadow = texture2D(s_shadows, texCoord).x;
+	shadow = shadow*shadow;
 
 	// need to get a valid view vector for any microfacet stuff :(
 	float gloss = 1.0-roughness;
 	float specPower = 62.0 * gloss + 2.0;
 
-	vec3 light = normalize(u_lightPosition - viewSpacePosition);
-	//vec3 light = normalize(vec3(-0.2, 1.0, -0.2));
+	vec3 light = (u_lightPosition - viewSpacePosition);
+	float lightDistSq = dot(light, light) + 1e-5;
+	light = normalize(light);
 	float NdotL = saturate(dot(vsNormal, light));
-	float ambient = 0.1;
-	float diffuse = NdotL;
+	float diffuse = NdotL * (1.0/lightDistSq);
 	float specular = 5.0 * pow(NdotL, specPower);
 
-	float lightAmount = mix(diffuse, specular, 0.04) * shadow + ambient;
+	float lightAmount = mix(diffuse, specular, 0.04) * shadow;
 
 	color = (color * lightAmount);
-	color = color / (color + vec3_splat(1.0));
 	color = toGamma(color);
 
-	gl_FragColor = vec4(color * lightAmount, 1.0);
+	// debug display shadows only
+	if (0.0 < u_displayShadows)
+	{
+		color = vec3_splat(shadow);
+	}
+
+	gl_FragColor = vec4(color, 1.0);
 }
