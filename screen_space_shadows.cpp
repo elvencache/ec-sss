@@ -248,6 +248,7 @@ public:
 
 		// Create program from shaders.
 		m_gbufferProgram = loadProgram("vs_sss_gbuffer", "fs_sss_gbuffer"); // Fill gbuffer
+		m_sphereProgram = loadProgram("vs_sss_gbuffer", "fs_sss_unlit");
 		m_linearDepthProgram = loadProgram("vs_sss_screenquad", "fs_sss_linear_depth");
 		m_shadowsProgram = loadProgram("vs_sss_screenquad", "fs_screen_space_shadows");
 		m_combineProgram = loadProgram("vs_sss_screenquad", "fs_sss_deferred_combine"); // Compute lighting from gbuffer
@@ -321,6 +322,7 @@ public:
 		bgfx::destroy(m_groundTexture);
 
 		bgfx::destroy(m_gbufferProgram);
+		bgfx::destroy(m_sphereProgram);
 		bgfx::destroy(m_linearDepthProgram);
 		bgfx::destroy(m_shadowsProgram);
 		bgfx::destroy(m_combineProgram);
@@ -429,6 +431,28 @@ public:
 					);
 
 				drawAllModels(view, m_gbufferProgram, m_uniforms);
+
+				// draw sphere to visualize light
+				{
+					const float scale = s_meshScale[m_lightModel.mesh];
+					float mtx[16];
+					bx::mtxSRT(mtx
+						, scale
+						, scale
+						, scale
+						, 0.0f
+						, 0.0f
+						, 0.0f
+						, m_lightModel.position[0]
+						, m_lightModel.position[1]
+						, m_lightModel.position[2]
+						);
+
+					m_uniforms.submit();
+					meshSubmit(m_meshes[m_lightModel.mesh], view, m_sphereProgram, mtx);
+				}
+
+
 				++view;
 			}
 
@@ -502,9 +526,6 @@ public:
 				++view;
 			}
 
-			// update last texture written, to chain passes together
-			bgfx::TextureHandle lastTex = m_currentColor.m_texture;
-
 			if (m_enableTxaa)
 			{
 				// Draw txaa to txaa buffer
@@ -519,7 +540,7 @@ public:
 						| BGFX_STATE_WRITE_A
 						| BGFX_STATE_DEPTH_TEST_ALWAYS
 						);
-					bgfx::setTexture(0, s_color, lastTex);
+					bgfx::setTexture(0, s_color, m_currentColor.m_texture);
 					bgfx::setTexture(1, s_previousColor, m_previousColor.m_texture);
 					bgfx::setTexture(2, s_velocity, m_gbufferTex[GBUFFER_RT_VELOCITY]);
 					bgfx::setTexture(3, s_depth, m_gbufferTex[GBUFFER_RT_DEPTH]);
@@ -584,7 +605,7 @@ public:
 						| BGFX_STATE_WRITE_RGB
 						| BGFX_STATE_WRITE_A
 						);
-					bgfx::setTexture(0, s_color, lastTex);
+					bgfx::setTexture(0, s_color, m_currentColor.m_texture);
 					screenSpaceQuad(float(m_width), float(m_height), m_texelHalf, caps->originBottomLeft);
 					bgfx::submit(view, m_copyProgram);
 					++view;
@@ -683,30 +704,6 @@ public:
 
 	void drawAllModels(bgfx::ViewId _pass, bgfx::ProgramHandle _program, const Uniforms & _uniforms)
 	{
-		// draw sphere to visualize light
-		{
-			const float scale = s_meshScale[m_lightModel.mesh];
-			float mtx[16];
-			bx::mtxSRT(mtx
-				, scale
-				, scale
-				, scale
-				, 0.0f
-				, 0.0f
-				, 0.0f
-				, m_lightModel.position[0]
-				, m_lightModel.position[1]
-				, m_lightModel.position[2]
-				);
-
-			// Submit mesh to gbuffer
-			bgfx::setTexture(0, s_albedo, m_groundTexture);
-			bgfx::setTexture(1, s_normal, m_normalTexture);
-			_uniforms.submit();
-
-			meshSubmit(m_meshes[m_lightModel.mesh], _pass, _program, mtx);
-		}
-
 		for (uint32_t ii = 0; ii < BX_COUNTOF(m_models); ++ii)
 		{
 			const Model& model = m_models[ii];
@@ -893,6 +890,7 @@ public:
 
 	// Resource handles
 	bgfx::ProgramHandle m_gbufferProgram;
+	bgfx::ProgramHandle m_sphereProgram;
 	bgfx::ProgramHandle m_linearDepthProgram;
 	bgfx::ProgramHandle m_shadowsProgram;
 	bgfx::ProgramHandle m_combineProgram;
