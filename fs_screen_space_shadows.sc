@@ -10,6 +10,8 @@ $input v_texcoord0
 
 SAMPLER2D(s_depth, 0);
 
+#define DEPTH_EPSILON	1e-4
+
 // from assao sample, cs_assao_prepare_depths.sc
 vec3 NDCToViewspace( vec2 pos, float viewspaceDepth )
 {
@@ -33,7 +35,6 @@ void main()
 	vec3 viewSpacePosition = NDCToViewspace(texCoord, linearDepth);
 
 	vec3 toLight = u_lightPosition - viewSpacePosition;
-	vec3 light = normalize(toLight);
 	vec3 lightStep = normalize(toLight) * (u_shadowRadius / u_shadowSteps);
 
 	vec3 samplePosition = viewSpacePosition;
@@ -50,7 +51,6 @@ void main()
 
 	float occluded = 0.0;
 	float firstHit = u_shadowSteps;
-	float lastHit = -1.0;
 	for (int i = 0; i < int(u_shadowSteps); ++i, samplePosition += lightStep)
 	{
 		vec3 psSamplePosition = instMul(viewToProj, vec4(samplePosition, 1.0)).xyw;
@@ -61,14 +61,24 @@ void main()
 		float sampleDepth = texture2D(s_depth, sampleCoord).x;
 
 		float delta = (samplePosition.z - sampleDepth);
-		if (1e-5 < delta)
+		if (DEPTH_EPSILON < delta && delta < u_shadowRadius)
 		{
 			firstHit = min(firstHit, float(i));
-			lastHit = max(lastHit, float(i));
 			occluded += saturate(u_shadowRadius - delta);
 		}
 	}
-	occluded *= (u_shadowSteps - firstHit) / u_shadowSteps;
 
-	gl_FragColor = vec4_splat(1.0-occluded);
+	float shadow;
+	if (0.0 < u_useSoftContactShadows)
+	{
+		shadow = occluded * (1.0 - (firstHit / u_shadowSteps));
+		shadow = 1.0 - saturate(occluded);
+		shadow = shadow*shadow;
+	}
+	else
+	{
+		shadow = 0.0 < occluded ? 0.0 : 1.0;
+	}
+
+	gl_FragColor = vec4_splat(shadow);
 }

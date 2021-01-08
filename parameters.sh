@@ -6,7 +6,7 @@
 #ifndef PARAMETERS_SH
 #define PARAMETERS_SH
 
-uniform vec4 u_params[22];
+uniform vec4 u_params[23];
 
 #define u_jitterCurr				(u_params[0].xy)
 #define u_jitterPrev				(u_params[0].zw)
@@ -41,5 +41,7 @@ uniform vec4 u_params[22];
 #define u_viewToProj1				(u_params[19])
 #define u_viewToProj2				(u_params[20])
 #define u_viewToProj3				(u_params[21])
+
+#define u_useSoftContactShadows		(u_params[22].x)
 
 #endif // PARAMETERS_SH

@@ -71,7 +71,7 @@ bgfx::VertexLayout PosTexCoord0Vertex::ms_layout;
 
 struct Uniforms
 {
-	enum { NumVec4 = 22 };
+	enum { NumVec4 = 23 };
 
 	void init() {
 		u_params = bgfx::createUniform("u_params", bgfx::UniformType::Vec4, NumVec4);
@@ -99,6 +99,7 @@ struct Uniforms
 			/* 13    */ struct { float m_lightPosition[3]; float m_unused13; };
 			/* 14-17 */ struct { float m_worldToView[16]; }; // built-in u_view will be transform for quad during screen passes
 			/* 18-21 */ struct { float m_viewToProj[16]; };	 // built-in u_proj will be transform for quad during screen passes
+			/* 22    */ struct { float m_useSoftContactShadows; float m_unused22[3]; };
 		};
 
 		float m_params[NumVec4 * 4];
@@ -652,6 +653,7 @@ public:
 				ImGui::SliderInt("shadow steps", &m_shadowSteps, 1, 64);
 				ImGui::Checkbox("noise offset", &m_useNoiseOffset);
 				ImGui::Checkbox("dynamic noise", &m_dynamicNoise);
+				ImGui::Checkbox("soft contact shadows", &m_useSoftContactShadows);
 				ImGui::Checkbox("display shadows only", &m_displayShadows);
 				ImGui::Checkbox("move light", &m_moveLight);
 			}
@@ -777,8 +779,8 @@ public:
 
 		m_currentColor.init(m_size[0], m_size[1], bgfx::TextureFormat::RG11B10F, bilinearFlags);
 		m_previousColor.init(m_size[0], m_size[1], bgfx::TextureFormat::RG11B10F, bilinearFlags);
-		m_linearDepth.init(m_size[0], m_size[1], bgfx::TextureFormat::R16F, bilinearFlags);
-		m_shadows.init(m_size[0], m_size[1], bgfx::TextureFormat::RG11B10F /*R16F*/, bilinearFlags);
+		m_linearDepth.init(m_size[0], m_size[1], bgfx::TextureFormat::R16F, pointSampleFlags);
+		m_shadows.init(m_size[0], m_size[1], bgfx::TextureFormat::R16F, pointSampleFlags);
 		m_txaaColor.init(m_size[0], m_size[1], bgfx::TextureFormat::RG11B10F, bilinearFlags);
 	}
 
@@ -833,6 +835,7 @@ public:
 		m_uniforms.m_shadowRadius = m_shadowRadius;
 		m_uniforms.m_shadowSteps = float(m_shadowSteps);
 		m_uniforms.m_useNoiseOffset = m_useNoiseOffset ? 1.0f : 0.0f;
+		m_uniforms.m_useSoftContactShadows = m_useSoftContactShadows ? 1.0f : 0.0f;
 
 		mat4Set(m_uniforms.m_worldToViewPrev, m_worldToViewPrev);
 		mat4Set(m_uniforms.m_viewToProjPrev, m_viewToProjPrev);
@@ -953,6 +956,7 @@ public:
 	float m_shadowRadius = 0.5f;
 	int32_t m_shadowSteps = 8;
 	bool m_moveLight = true;
+	bool m_useSoftContactShadows = true;
 
 	bool m_enableTxaa = false;
 	float m_feedbackMin = 0.8f;

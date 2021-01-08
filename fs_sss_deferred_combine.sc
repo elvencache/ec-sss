@@ -54,7 +54,6 @@ void main()
 		vec3 viewSpacePosition = NDCToViewspace(texCoord, linearDepth);
 
 		float shadow = texture2D(s_shadows, texCoord).x;
-		shadow = shadow*shadow;
 
 		// need to get a valid view vector for any microfacet stuff :(
 		float gloss = 1.0-roughness;
