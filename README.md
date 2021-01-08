@@ -8,6 +8,6 @@ bgfx example style project for screen space shadows, work in progress
 4) run makefile in this folder to compile shaders
 
 # notes
-Implement screen space shadows denoising as bgfx example. Goal is to explore various options and parameters.
+Implement screen space shadows as bgfx example. Goal is to explore various options and parameters. Includes toggle for "soft contact shadows", inspired by screen space ambient occlusion. These could fit better with the look of your scene if you already have some kind of soft shadows.
 
 # references

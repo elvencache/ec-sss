@@ -43,5 +43,6 @@ uniform vec4 u_params[23];
 #define u_viewToProj3				(u_params[21])
 
 #define u_useSoftContactShadows		(u_params[22].x)
+#define u_useScreenSpaceRadius		(u_params[22].y)
 
 #endif // PARAMETERS_SH

@@ -34,8 +34,20 @@ void main()
 	float linearDepth = texture2D(s_depth, texCoord).x;
 	vec3 viewSpacePosition = NDCToViewspace(texCoord, linearDepth);
 
-	vec3 toLight = u_lightPosition - viewSpacePosition;
-	vec3 lightStep = normalize(toLight) * (u_shadowRadius / u_shadowSteps);
+	vec3 lightStep = normalize(u_lightPosition - viewSpacePosition);
+
+	// screen space radius not usable directly. convert value given in pixels,
+	// to world units. this is important later when comparing depth in world units
+	float radius = u_shadowRadius;
+	if (0.0 < u_useScreenSpaceRadius)
+	{
+		// this has to be about the worst way to do this calculation...
+		vec2 radiusTexCoord = texCoord;
+		radiusTexCoord.x += u_shadowRadius * u_viewTexel.x;
+		vec3 radiusPosition = NDCToViewspace(radiusTexCoord, linearDepth);
+		radius = abs(radiusPosition.x - viewSpacePosition.x);
+	}
+	lightStep *= (radius / u_shadowSteps);
 
 	vec3 samplePosition = viewSpacePosition;
 	float random = ShadertoyNoise(gl_FragCoord.xy + vec2(314.0, 159.0)*u_frameIdx);
@@ -61,10 +73,10 @@ void main()
 		float sampleDepth = texture2D(s_depth, sampleCoord).x;
 
 		float delta = (samplePosition.z - sampleDepth);
-		if (DEPTH_EPSILON < delta && delta < u_shadowRadius)
+		if (DEPTH_EPSILON < delta && delta < radius)
 		{
 			firstHit = min(firstHit, float(i));
-			occluded += saturate(u_shadowRadius - delta);
+			occluded += saturate(radius - delta);
 		}
 	}
 

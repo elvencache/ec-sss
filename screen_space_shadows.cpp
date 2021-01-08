@@ -4,8 +4,10 @@
 */
 
 /*
-* Implement screen space shadows denoising as bgfx example. Goal is to explore various
-* options and parameters.
+* Implement screen space shadows as bgfx example. Goal is to explore various
+* options and parameters. Includes toggle for "soft contact shadows", inspired
+* by screen space ambient occlusion. These could fit better with the look of
+* your scene if you already have some kind of soft shadows.
 */
 
 
@@ -99,7 +101,7 @@ struct Uniforms
 			/* 13    */ struct { float m_lightPosition[3]; float m_unused13; };
 			/* 14-17 */ struct { float m_worldToView[16]; }; // built-in u_view will be transform for quad during screen passes
 			/* 18-21 */ struct { float m_viewToProj[16]; };	 // built-in u_proj will be transform for quad during screen passes
-			/* 22    */ struct { float m_useSoftContactShadows; float m_unused22[3]; };
+			/* 22    */ struct { float m_useSoftContactShadows; float m_useScreenSpaceRadius; float m_unused22[2]; };
 		};
 
 		float m_params[NumVec4 * 4];
@@ -498,7 +500,6 @@ public:
 					| BGFX_STATE_DEPTH_TEST_ALWAYS
 					);
 				bgfx::setTexture(0, s_depth, m_linearDepth.m_texture);
-				//bgfx::setTexture(1, s_normal, m_gbufferTex[GBUFFER_RT_NORMAL]);
 				m_uniforms.submit();
 				screenSpaceQuad(float(m_width), float(m_height), m_texelHalf, caps->originBottomLeft);
 				bgfx::submit(view, m_shadowsProgram);
@@ -649,7 +650,16 @@ public:
 				ImGui::TextWrapped("screen space shadows");
 				ImGui::Separator();
 
-				ImGui::SliderFloat("shadow radius", &m_shadowRadius, 1e-3f, 1.0f);
+				
+				ImGui::Checkbox("screen space radius", &m_useScreenSpaceRadius);
+				if (m_useScreenSpaceRadius)
+				{
+					ImGui::SliderFloat("radius in pixels", &m_shadowRadiusPixels, 1.0f, 100.0f);
+				}
+				else
+				{
+					ImGui::SliderFloat("radius in world units", &m_shadowRadius, 1e-3f, 1.0f);
+				}
 				ImGui::SliderInt("shadow steps", &m_shadowSteps, 1, 64);
 				ImGui::Checkbox("noise offset", &m_useNoiseOffset);
 				ImGui::Checkbox("dynamic noise", &m_dynamicNoise);
@@ -832,10 +842,11 @@ public:
 		m_uniforms.m_frameIdx = m_dynamicNoise
 			? float(m_currFrame % 8)
 			: 0.0f;
-		m_uniforms.m_shadowRadius = m_shadowRadius;
+		m_uniforms.m_shadowRadius = m_useScreenSpaceRadius ? m_shadowRadiusPixels : m_shadowRadius;
 		m_uniforms.m_shadowSteps = float(m_shadowSteps);
 		m_uniforms.m_useNoiseOffset = m_useNoiseOffset ? 1.0f : 0.0f;
 		m_uniforms.m_useSoftContactShadows = m_useSoftContactShadows ? 1.0f : 0.0f;
+		m_uniforms.m_useScreenSpaceRadius = m_useScreenSpaceRadius ? 1.0f : 0.0f;
 
 		mat4Set(m_uniforms.m_worldToViewPrev, m_worldToViewPrev);
 		mat4Set(m_uniforms.m_viewToProjPrev, m_viewToProjPrev);
@@ -858,8 +869,8 @@ public:
 
 			vec2Set(m_uniforms.m_depthUnpackConsts, depthLinearizeMul, depthLinearizeAdd);
 
-			float tanHalfFOVY = 1.0f / m_proj2[1*4+1];    // = tanf( drawContext.Camera.GetYFOV( ) * 0.5f );
-			float tanHalfFOVX = 1.0F / m_proj2[0];    // = tanHalfFOVY * drawContext.Camera.GetAspect( );
+			float tanHalfFOVY = 1.0f / m_proj2[1*4+1];	// = tanf( drawContext.Camera.GetYFOV( ) * 0.5f );
+			float tanHalfFOVX = 1.0F / m_proj2[0];		// = tanHalfFOVY * drawContext.Camera.GetAspect( );
 
 			if (bgfx::getRendererType() == bgfx::RendererType::OpenGL)
 			{
@@ -954,9 +965,11 @@ public:
 	bool m_useNoiseOffset = true;
 	bool m_dynamicNoise = true;
 	float m_shadowRadius = 0.5f;
+	float m_shadowRadiusPixels = 16.0f;
 	int32_t m_shadowSteps = 8;
 	bool m_moveLight = true;
 	bool m_useSoftContactShadows = true;
+	bool m_useScreenSpaceRadius = false;
 
 	bool m_enableTxaa = false;
 	float m_feedbackMin = 0.8f;
