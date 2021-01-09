@@ -536,6 +536,9 @@ public:
 			{
 				ImGui::Text("shadow controls:");
 				ImGui::Checkbox("screen space radius", &m_useScreenSpaceRadius);
+				if (ImGui::IsItemHovered())
+					ImGui::SetTooltip("define radius in pixels or world units");
+
 				if (m_useScreenSpaceRadius)
 				{
 					ImGui::SliderFloat("radius in pixels", &m_shadowRadiusPixels, 1.0f, 100.0f);
@@ -544,11 +547,28 @@ public:
 				{
 					ImGui::SliderFloat("radius in world units", &m_shadowRadius, 1e-3f, 1.0f);
 				}
+
 				ImGui::SliderInt("shadow steps", &m_shadowSteps, 1, 64);
+				if (ImGui::IsItemHovered())
+					ImGui::SetTooltip("number of steps/samples to take between shaded pixel and radius");
 
 				ImGui::Combo("contact shadows mode", &m_contactShadowsMode, "hard\0soft\0very soft\0\0");
+				if (ImGui::IsItemHovered())
+				{
+					ImGui::BeginTooltip();
+					ImGui::Text("hard");
+					ImGui::BulletText("any occluder, fully shadowed");
+					ImGui::Text("soft");
+					ImGui::BulletText("modulate shadow by distance to first occluder");
+					ImGui::Text("very soft");
+					ImGui::BulletText("also reduce each shadow contribution by distance");
+					ImGui::EndTooltip();
+				}
 
 				ImGui::Checkbox("add random offset to initial position", &m_useNoiseOffset);
+				if (ImGui::IsItemHovered())
+					ImGui::SetTooltip("hide banding with noise");
+
 				ImGui::Checkbox("use different offset each frame", &m_dynamicNoise);
 				ImGui::Separator();
 

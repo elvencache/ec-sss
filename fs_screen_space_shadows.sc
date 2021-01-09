@@ -70,13 +70,18 @@ void main()
 
 		vec2 sampleCoord = psSamplePosition.xy * 0.5 + 0.5;
 		sampleCoord.y = 1.0 - sampleCoord.y;
-		float sampleDepth = texture2D(s_depth, sampleCoord).x;
+
+		// using texture2Dlod because dx9 compiler doesn't like
+		// gradient instructions within this loop
+		float sampleDepth = texture2DLod(s_depth, sampleCoord, 0).x;
 
 		float delta = (samplePosition.z - sampleDepth);
 		if (DEPTH_EPSILON < delta && delta < radius)
 		{
 			firstHit = min(firstHit, float(i));
+			// for hard, soft occlusion
 			occluded += 1.0;
+			// for very soft occlusion
 			softOccluded += saturate(radius - delta);
 		}
 	}
@@ -84,18 +89,21 @@ void main()
 	float shadow;
 	if (1.5 < u_contactShadowsMode)
 	{
+		// very soft occlusion, includes distance falloff above
 		shadow = softOccluded * (1.0 - (firstHit / u_shadowSteps));
 		shadow = 1.0 - saturate(shadow);
 		shadow = shadow*shadow;
 	}
 	else if (0.5 < u_contactShadowsMode)
 	{
+		// soft occlusion
 		shadow = occluded * (1.0 - (firstHit / u_shadowSteps));
 		shadow = 1.0 - saturate(shadow);
 		shadow = shadow*shadow;
 	}
 	else // == 0
 	{
+		// hard occlusion
 		shadow = 0.0 < occluded ? 0.0 : 1.0;
 	}
 

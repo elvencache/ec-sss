@@ -50,7 +50,7 @@ void main()
 		vec3 vsNormal = instMul(worldToView, vec4(normal, 0.0)).xyz;
 
 		// read depth and recreate position
-		float linearDepth = texture2D(s_depth, texCoord);
+		float linearDepth = texture2D(s_depth, texCoord).x;
 		vec3 viewSpacePosition = NDCToViewspace(texCoord, linearDepth);
 
 		float shadow = texture2D(s_shadows, texCoord).x;
