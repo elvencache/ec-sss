@@ -41,11 +41,10 @@ void main()
 	float radius = u_shadowRadius;
 	if (0.0 < u_useScreenSpaceRadius)
 	{
-		// this has to be about the worst way to do this calculation...
-		vec2 radiusTexCoord = texCoord;
-		radiusTexCoord.x += u_shadowRadius * u_viewTexel.x;
-		vec3 radiusPosition = NDCToViewspace(radiusTexCoord, linearDepth);
-		radius = abs(radiusPosition.x - viewSpacePosition.x);
+		// is there a better way to do this calculation?
+		float radiusTexCoordX = u_shadowRadius * u_viewTexel.x + texCoord.x;
+		float radiusPositionX = u_ndcToViewMul.x * radiusTexCoordX + u_ndcToViewAdd.x;
+		radius = abs(radiusPositionX * linearDepth - viewSpacePosition.x);
 	}
 	lightStep *= (radius / u_shadowSteps);
 
@@ -62,6 +61,7 @@ void main()
 	);
 
 	float occluded = 0.0;
+	float softOccluded = 0.0;
 	float firstHit = u_shadowSteps;
 	for (int i = 0; i < int(u_shadowSteps); ++i, samplePosition += lightStep)
 	{
@@ -76,18 +76,25 @@ void main()
 		if (DEPTH_EPSILON < delta && delta < radius)
 		{
 			firstHit = min(firstHit, float(i));
-			occluded += saturate(radius - delta);
+			occluded += 1.0;
+			softOccluded += saturate(radius - delta);
 		}
 	}
 
 	float shadow;
-	if (0.0 < u_useSoftContactShadows)
+	if (1.5 < u_contactShadowsMode)
 	{
-		shadow = occluded * (1.0 - (firstHit / u_shadowSteps));
-		shadow = 1.0 - saturate(occluded);
+		shadow = softOccluded * (1.0 - (firstHit / u_shadowSteps));
+		shadow = 1.0 - saturate(shadow);
 		shadow = shadow*shadow;
 	}
-	else
+	else if (0.5 < u_contactShadowsMode)
+	{
+		shadow = occluded * (1.0 - (firstHit / u_shadowSteps));
+		shadow = 1.0 - saturate(shadow);
+		shadow = shadow*shadow;
+	}
+	else // == 0
 	{
 		shadow = 0.0 < occluded ? 0.0 : 1.0;
 	}

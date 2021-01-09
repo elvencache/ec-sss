@@ -24,9 +24,8 @@ namespace {
 // Gbuffer has multiple render targets
 #define GBUFFER_RT_COLOR		0
 #define GBUFFER_RT_NORMAL		1
-#define GBUFFER_RT_VELOCITY		2
-#define GBUFFER_RT_DEPTH		3
-#define GBUFFER_RENDER_TARGETS	4
+#define GBUFFER_RT_DEPTH		2
+#define GBUFFER_RENDER_TARGETS	3
 
 #define MODEL_COUNT				100
 
@@ -73,7 +72,7 @@ bgfx::VertexLayout PosTexCoord0Vertex::ms_layout;
 
 struct Uniforms
 {
-	enum { NumVec4 = 23 };
+	enum { NumVec4 = 12 };
 
 	void init() {
 		u_params = bgfx::createUniform("u_params", bgfx::UniformType::Vec4, NumVec4);
@@ -91,17 +90,12 @@ struct Uniforms
 	{
 		struct
 		{
-			/*  0    */ struct { float m_cameraJitterCurr[2]; float m_cameraJitterPrev[2]; };
-			/*  1    */ struct { float m_feedbackMin; float m_feedbackMax; float m_applyMitchellFilter; float m_displayShadows; };
-			/*  2    */ struct { float m_frameIdx; float m_shadowRadius; float m_shadowSteps; float m_useNoiseOffset; };
-			/*  3-6  */ struct { float m_worldToViewPrev[16]; };
-			/*  7-10 */ struct { float m_viewToProjPrev[16]; };
-			/* 11    */ struct { float m_depthUnpackConsts[2]; float m_unused11[2]; };
-			/* 12    */ struct { float m_ndcToViewMul[2]; float m_ndcToViewAdd[2]; };
-			/* 13    */ struct { float m_lightPosition[3]; float m_unused13; };
-			/* 14-17 */ struct { float m_worldToView[16]; }; // built-in u_view will be transform for quad during screen passes
-			/* 18-21 */ struct { float m_viewToProj[16]; };	 // built-in u_proj will be transform for quad during screen passes
-			/* 22    */ struct { float m_useSoftContactShadows; float m_useScreenSpaceRadius; float m_unused22[2]; };
+			/* 0    */ struct { float m_frameIdx; float m_shadowRadius; float m_shadowSteps; float m_useNoiseOffset; };
+			/* 1    */ struct { float m_depthUnpackConsts[2]; float m_contactShadowsMode; float m_useScreenSpaceRadius; };
+			/* 2    */ struct { float m_ndcToViewMul[2]; float m_ndcToViewAdd[2]; };
+			/* 3    */ struct { float m_lightPosition[3]; float m_displayShadows; };
+			/* 4-7  */ struct { float m_worldToView[16]; }; // built-in u_view will be transform for quad during screen passes
+			/* 8-11 */ struct { float m_viewToProj[16]; };	 // built-in u_proj will be transform for quad during screen passes
 		};
 
 		float m_params[NumVec4 * 4];
@@ -244,9 +238,7 @@ public:
 		s_albedo = bgfx::createUniform("s_albedo", bgfx::UniformType::Sampler); // Model's source albedo
 		s_color = bgfx::createUniform("s_color", bgfx::UniformType::Sampler); // Color (albedo) gbuffer, default color input
 		s_normal = bgfx::createUniform("s_normal", bgfx::UniformType::Sampler); // Normal gbuffer, Model's source normal
-		s_velocity = bgfx::createUniform("s_velocity", bgfx::UniformType::Sampler); // Velocity gbuffer
 		s_depth = bgfx::createUniform("s_depth", bgfx::UniformType::Sampler); // Depth gbuffer
-		s_previousColor = bgfx::createUniform("s_previousColor", bgfx::UniformType::Sampler); // Previous frame's result
 		s_shadows = bgfx::createUniform("s_shadows", bgfx::UniformType::Sampler);
 
 		// Create program from shaders.
@@ -255,8 +247,6 @@ public:
 		m_linearDepthProgram = loadProgram("vs_sss_screenquad", "fs_sss_linear_depth");
 		m_shadowsProgram = loadProgram("vs_sss_screenquad", "fs_screen_space_shadows");
 		m_combineProgram = loadProgram("vs_sss_screenquad", "fs_sss_deferred_combine"); // Compute lighting from gbuffer
-		m_copyProgram = loadProgram("vs_sss_screenquad", "fs_sss_copy");
-		m_txaaProgram = loadProgram("vs_sss_screenquad", "fs_sss_txaa");
 
 		// Load some meshes
 		for (uint32_t ii = 0; ii < BX_COUNTOF(s_meshPaths); ++ii)
@@ -293,15 +283,12 @@ public:
 
 		// Init camera
 		cameraCreate();
-		cameraSetPosition({ 0.0f, 1.5f, 0.0f });
+		cameraSetPosition({ 0.0f, 1.5f, -4.0f });
 		cameraSetVerticalAngle(-0.3f);
 		m_fovY = 60.0f;
 
-		// Init "prev" matrices, will be same for first frame
 		cameraGetViewMtx(m_view);
 		bx::mtxProj(m_proj, m_fovY, float(m_size[0]) / float(m_size[1]), 0.01f, 100.0f,  bgfx::getCaps()->homogeneousDepth);
-		mat4Set(m_worldToViewPrev, m_view);
-		mat4Set(m_viewToProjPrev, m_proj);
 
 		// Track whether previous results are valid
 		m_havePrevious = false;
@@ -329,17 +316,13 @@ public:
 		bgfx::destroy(m_linearDepthProgram);
 		bgfx::destroy(m_shadowsProgram);
 		bgfx::destroy(m_combineProgram);
-		bgfx::destroy(m_copyProgram);
-		bgfx::destroy(m_txaaProgram);
 
 		m_uniforms.destroy();
 
 		bgfx::destroy(s_albedo);
 		bgfx::destroy(s_color);
 		bgfx::destroy(s_normal);
-		bgfx::destroy(s_velocity);
 		bgfx::destroy(s_depth);
-		bgfx::destroy(s_previousColor);
 		bgfx::destroy(s_shadows);
 
 		destroyFramebuffers();
@@ -382,7 +365,7 @@ public:
 			}
 
 			// rotate light
-			const float rotationSpeed = m_moveLight ? 1.0f : 0.0f;
+			const float rotationSpeed = m_moveLight ? 0.75f : 0.0f;
 			m_lightRotation += deltaTime * rotationSpeed;
 			if (bx::kPi2 < m_lightRotation)
 			{
@@ -402,12 +385,6 @@ public:
 
 			bx::mtxProj(m_proj, m_fovY, float(m_size[0]) / float(m_size[1]), 0.01f, 100.0f, caps->homogeneousDepth);
 			bx::mtxProj(m_proj2, m_fovY, float(m_size[0]) / float(m_size[1]), 0.01f, 100.0f, false);
-
-			if (m_enableTxaa)
-			{
-				m_proj[2*4+0] += m_jitter[0] * (2.0f / m_size[0]);
-				m_proj[2*4+1] -= m_jitter[1] * (2.0f / m_size[1]);
-			}
 
 			bgfx::ViewId view = 0;
 
@@ -512,7 +489,7 @@ public:
 
 				bgfx::setViewRect(view, 0, 0, uint16_t(m_width), uint16_t(m_height));
 				bgfx::setViewTransform(view, NULL, orthoProj);
-				bgfx::setViewFrameBuffer(view, m_currentColor.m_buffer);
+				bgfx::setViewFrameBuffer(view, BGFX_INVALID_HANDLE);
 				bgfx::setState(0
 					| BGFX_STATE_WRITE_RGB
 					| BGFX_STATE_WRITE_A
@@ -527,96 +504,6 @@ public:
 				bgfx::submit(view, m_combineProgram);
 				++view;
 			}
-
-			if (m_enableTxaa)
-			{
-				// Draw txaa to txaa buffer
-				{
-					bgfx::setViewName(view, "temporal aa");
-
-					bgfx::setViewRect(view, 0, 0, uint16_t(m_width), uint16_t(m_height));
-					bgfx::setViewTransform(view, NULL, orthoProj);
-					bgfx::setViewFrameBuffer(view, m_txaaColor.m_buffer);
-					bgfx::setState(0
-						| BGFX_STATE_WRITE_RGB
-						| BGFX_STATE_WRITE_A
-						| BGFX_STATE_DEPTH_TEST_ALWAYS
-						);
-					bgfx::setTexture(0, s_color, m_currentColor.m_texture);
-					bgfx::setTexture(1, s_previousColor, m_previousColor.m_texture);
-					bgfx::setTexture(2, s_velocity, m_gbufferTex[GBUFFER_RT_VELOCITY]);
-					bgfx::setTexture(3, s_depth, m_gbufferTex[GBUFFER_RT_DEPTH]);
-					m_uniforms.submit();
-					screenSpaceQuad(float(m_width), float(m_height), m_texelHalf, caps->originBottomLeft);
-					bgfx::submit(view, m_txaaProgram);
-					++view;
-				}
-			
-				// Copy txaa result to previous
-				{
-					bgfx::setViewName(view, "copy2previous");
-
-					bgfx::setViewRect(view, 0, 0, uint16_t(m_width), uint16_t(m_height));
-					bgfx::setViewTransform(view, NULL, orthoProj);
-					bgfx::setViewFrameBuffer(view, m_previousColor.m_buffer);
-					bgfx::setState(0
-						| BGFX_STATE_WRITE_RGB
-						| BGFX_STATE_WRITE_A
-						| BGFX_STATE_DEPTH_TEST_ALWAYS
-						);
-					bgfx::setTexture(0, s_color, m_txaaColor.m_texture);
-					screenSpaceQuad(float(m_width), float(m_height), m_texelHalf, caps->originBottomLeft);
-					bgfx::submit(view, m_copyProgram);
-					++view;
-				}
-
-				// Copy txaa result to swap chain
-				{
-					bgfx::setViewName(view, "display");
-
-					bgfx::setViewRect(view, 0, 0, uint16_t(m_width), uint16_t(m_height));
-					bgfx::setViewTransform(view, NULL, orthoProj);
-					bgfx::setViewFrameBuffer(view, BGFX_INVALID_HANDLE);
-					bgfx::setState(0
-						| BGFX_STATE_WRITE_RGB
-						| BGFX_STATE_WRITE_A
-						| BGFX_STATE_DEPTH_TEST_ALWAYS
-						);
-					bgfx::setTexture(0, s_color, m_txaaColor.m_texture);
-					screenSpaceQuad(float(m_width), float(m_height), m_texelHalf, caps->originBottomLeft);
-					bgfx::submit(view, m_copyProgram);
-					++view;
-				}
-			}
-			else
-			{
-				// Copy color result to swap chain
-				{
-					bgfx::setViewName(view, "display");
-					bgfx::setViewClear(view
-						, BGFX_CLEAR_NONE
-						, 0
-						, 1.0f
-						, 0
-					);
-
-					bgfx::setViewRect(view, 0, 0, uint16_t(m_width), uint16_t(m_height));
-					bgfx::setViewTransform(view, NULL, orthoProj);
-					bgfx::setViewFrameBuffer(view, BGFX_INVALID_HANDLE);
-					bgfx::setState(0
-						| BGFX_STATE_WRITE_RGB
-						| BGFX_STATE_WRITE_A
-						);
-					bgfx::setTexture(0, s_color, m_currentColor.m_texture);
-					screenSpaceQuad(float(m_width), float(m_height), m_texelHalf, caps->originBottomLeft);
-					bgfx::submit(view, m_copyProgram);
-					++view;
-				}
-			}
-
-			// Copy matrices for next time
-			mat4Set(m_worldToViewPrev, m_view);
-			mat4Set(m_viewToProjPrev, m_proj);
 
 			// Draw UI
 			imguiBeginFrame(m_mouseState.m_mx
@@ -636,7 +523,7 @@ public:
 				, ImGuiCond_FirstUseEver
 				);
 			ImGui::SetNextWindowSize(
-				ImVec2(m_width / 4.0f, m_height / 1.24f)
+				ImVec2(m_width / 4.0f, m_height / 2.3f)
 				, ImGuiCond_FirstUseEver
 				);
 			ImGui::Begin("Settings"
@@ -647,10 +534,7 @@ public:
 			ImGui::PushItemWidth(ImGui::GetWindowWidth() * 0.5f);
 
 			{
-				ImGui::TextWrapped("screen space shadows");
-				ImGui::Separator();
-
-				
+				ImGui::Text("shadow controls:");
 				ImGui::Checkbox("screen space radius", &m_useScreenSpaceRadius);
 				if (m_useScreenSpaceRadius)
 				{
@@ -661,37 +545,16 @@ public:
 					ImGui::SliderFloat("radius in world units", &m_shadowRadius, 1e-3f, 1.0f);
 				}
 				ImGui::SliderInt("shadow steps", &m_shadowSteps, 1, 64);
-				ImGui::Checkbox("noise offset", &m_useNoiseOffset);
-				ImGui::Checkbox("dynamic noise", &m_dynamicNoise);
-				ImGui::Checkbox("soft contact shadows", &m_useSoftContactShadows);
+
+				ImGui::Combo("contact shadows mode", &m_contactShadowsMode, "hard\0soft\0very soft\0\0");
+
+				ImGui::Checkbox("add random offset to initial position", &m_useNoiseOffset);
+				ImGui::Checkbox("use different offset each frame", &m_dynamicNoise);
+				ImGui::Separator();
+
+				ImGui::Text("scene controls:");
 				ImGui::Checkbox("display shadows only", &m_displayShadows);
 				ImGui::Checkbox("move light", &m_moveLight);
-			}
-
-			if (ImGui::CollapsingHeader("TXAA options"))
-			{
-				ImGui::Checkbox("use TXAA", &m_enableTxaa);
-				ImGui::Checkbox("apply extra blur to current color", &m_applyMitchellFilter);
-				if (ImGui::IsItemHovered())
-					ImGui::SetTooltip("reduces flicker/crawl on thin features, maybe too much!");
-
-				ImGui::SliderFloat("feedback min", &m_feedbackMin, 0.0f, 1.0f);
-				if (ImGui::IsItemHovered())
-					ImGui::SetTooltip("minimum amount of previous frame to blend in");
-
-				ImGui::SliderFloat("feedback max", &m_feedbackMax, 0.0f, 1.0f);
-				if (ImGui::IsItemHovered())
-					ImGui::SetTooltip("maximum amount of previous frame to blend in");
-
-				ImGui::Checkbox("debug TXAA with slow frame rate", &m_useTxaaSlow);
-				if (ImGui::IsItemHovered())
-				{
-					ImGui::BeginTooltip();
-					ImGui::Text("sleep 100ms per frame to highlight temporal artifacts");
-					ImGui::Text("high framerate compensates for flickering, masking issues");
-					ImGui::EndTooltip();
-				}
-				ImGui::Separator();
 			}
 
 			ImGui::End();
@@ -701,12 +564,6 @@ public:
 			// Advance to next frame. Rendering thread will be kicked to
 			// process submitted rendering primitives.
 			m_currFrame = bgfx::frame();
-
-			// add artificial wait to emphasize txaa behavior
-			if (m_useTxaaSlow)
-			{
-				bx::sleep(100);
-			}
 
 			return true;
 		}
@@ -769,13 +626,10 @@ public:
 		m_size[0] = m_width;
 		m_size[1] = m_height;
 
-		const uint64_t bilinearFlags = 0
+		const uint64_t pointSampleFlags = 0
 			| BGFX_TEXTURE_RT
 			| BGFX_SAMPLER_U_CLAMP
 			| BGFX_SAMPLER_V_CLAMP
-			;
-
-		const uint64_t pointSampleFlags = bilinearFlags
 			| BGFX_SAMPLER_MIN_POINT
 			| BGFX_SAMPLER_MAG_POINT
 			| BGFX_SAMPLER_MIP_POINT
@@ -783,15 +637,11 @@ public:
 
 		m_gbufferTex[GBUFFER_RT_COLOR]    = bgfx::createTexture2D(uint16_t(m_size[0]), uint16_t(m_size[1]), false, 1, bgfx::TextureFormat::BGRA8, pointSampleFlags);
 		m_gbufferTex[GBUFFER_RT_NORMAL]   = bgfx::createTexture2D(uint16_t(m_size[0]), uint16_t(m_size[1]), false, 1, bgfx::TextureFormat::BGRA8, pointSampleFlags);
-		m_gbufferTex[GBUFFER_RT_VELOCITY] = bgfx::createTexture2D(uint16_t(m_size[0]), uint16_t(m_size[1]), false, 1, bgfx::TextureFormat::RG16F, pointSampleFlags);
 		m_gbufferTex[GBUFFER_RT_DEPTH]    = bgfx::createTexture2D(uint16_t(m_size[0]), uint16_t(m_size[1]), false, 1, bgfx::TextureFormat::D24, pointSampleFlags);
 		m_gbuffer = bgfx::createFrameBuffer(BX_COUNTOF(m_gbufferTex), m_gbufferTex, true);
 
-		m_currentColor.init(m_size[0], m_size[1], bgfx::TextureFormat::RG11B10F, bilinearFlags);
-		m_previousColor.init(m_size[0], m_size[1], bgfx::TextureFormat::RG11B10F, bilinearFlags);
 		m_linearDepth.init(m_size[0], m_size[1], bgfx::TextureFormat::R16F, pointSampleFlags);
 		m_shadows.init(m_size[0], m_size[1], bgfx::TextureFormat::R16F, pointSampleFlags);
-		m_txaaColor.init(m_size[0], m_size[1], bgfx::TextureFormat::RG11B10F, bilinearFlags);
 	}
 
 	// all buffers set to destroy their textures
@@ -799,45 +649,12 @@ public:
 	{
 		bgfx::destroy(m_gbuffer);
 
-		m_currentColor.destroy();
-		m_previousColor.destroy();
 		m_linearDepth.destroy();
 		m_shadows.destroy();
-		m_txaaColor.destroy();
 	}
 
 	void updateUniforms()
 	{
-		{
-			uint32_t idx = m_currFrame % 8;
-			const float offsets[] = {
-				(1.0f/2.0f),  (1.0f/3.0f),
-				(1.0f/4.0f),  (2.0f/3.0f),
-				(3.0f/4.0f),  (1.0f/9.0f),
-				(1.0f/8.0f),  (4.0f/9.0f),
-				(5.0f/8.0f),  (7.0f/9.0f),
-				(3.0f/8.0f),  (2.0f/9.0f),
-				(7.0f/8.0f),  (5.0f/9.0f),
-				(1.0f/16.0f), (8.0f/9.0f)
-			};
-
-			// Strange constant for jitterX is because 8 values from halton2
-			// sequence above do not average out to 0.5, 1/16 skews it to the
-			// left. Subtracting a smaller value to center the range of jitter
-			// around 0. Not necessary for jitterY. Not confident this makes sense...
-			const float jitterX = 1.0f * (offsets[2*idx]   - (7.125f/16.0f));
-			const float jitterY = 1.0f * (offsets[2*idx+1] - 0.5f);
-
-			vec2Set(m_uniforms.m_cameraJitterCurr, jitterX, jitterY);
-			vec2Set(m_uniforms.m_cameraJitterPrev, m_jitter[0], m_jitter[1]);
-
-			m_jitter[0] = jitterX;
-			m_jitter[1] = jitterY;
-		}
-
-		m_uniforms.m_feedbackMin = m_feedbackMin;
-		m_uniforms.m_feedbackMax = m_feedbackMax;
-		m_uniforms.m_applyMitchellFilter = m_applyMitchellFilter ? 1.0f : 0.0f;
 		m_uniforms.m_displayShadows = m_displayShadows ? 1.0f : 0.0f;
 		m_uniforms.m_frameIdx = m_dynamicNoise
 			? float(m_currFrame % 8)
@@ -845,11 +662,9 @@ public:
 		m_uniforms.m_shadowRadius = m_useScreenSpaceRadius ? m_shadowRadiusPixels : m_shadowRadius;
 		m_uniforms.m_shadowSteps = float(m_shadowSteps);
 		m_uniforms.m_useNoiseOffset = m_useNoiseOffset ? 1.0f : 0.0f;
-		m_uniforms.m_useSoftContactShadows = m_useSoftContactShadows ? 1.0f : 0.0f;
+		m_uniforms.m_contactShadowsMode = float(m_contactShadowsMode);
 		m_uniforms.m_useScreenSpaceRadius = m_useScreenSpaceRadius ? 1.0f : 0.0f;
 
-		mat4Set(m_uniforms.m_worldToViewPrev, m_worldToViewPrev);
-		mat4Set(m_uniforms.m_viewToProjPrev, m_viewToProjPrev);
 		mat4Set(m_uniforms.m_worldToView, m_view);
 		mat4Set(m_uniforms.m_viewToProj, m_proj);
 
@@ -908,8 +723,6 @@ public:
 	bgfx::ProgramHandle m_linearDepthProgram;
 	bgfx::ProgramHandle m_shadowsProgram;
 	bgfx::ProgramHandle m_combineProgram;
-	bgfx::ProgramHandle m_copyProgram;
-	bgfx::ProgramHandle m_txaaProgram;
 
 	// Shader uniforms
 	Uniforms m_uniforms;
@@ -918,19 +731,14 @@ public:
 	bgfx::UniformHandle s_albedo;
 	bgfx::UniformHandle s_color;
 	bgfx::UniformHandle s_normal;
-	bgfx::UniformHandle s_velocity;
 	bgfx::UniformHandle s_depth;
-	bgfx::UniformHandle s_previousColor;
 	bgfx::UniformHandle s_shadows;
 
 	bgfx::FrameBufferHandle m_gbuffer;
 	bgfx::TextureHandle m_gbufferTex[GBUFFER_RENDER_TARGETS];
 
-	RenderTarget m_currentColor;
-	RenderTarget m_previousColor;
 	RenderTarget m_linearDepth;
 	RenderTarget m_shadows;
-	RenderTarget m_txaaColor;
 
 	struct Model
 	{
@@ -955,8 +763,6 @@ public:
 	float m_view[16];
 	float m_proj[16];
 	float m_proj2[16];
-	float m_viewToProjPrev[16];
-	float m_worldToViewPrev[16];
 	float m_jitter[2];
 	int32_t m_size[2];
 
@@ -964,18 +770,12 @@ public:
 	bool m_displayShadows = false;
 	bool m_useNoiseOffset = true;
 	bool m_dynamicNoise = true;
-	float m_shadowRadius = 0.5f;
-	float m_shadowRadiusPixels = 16.0f;
+	float m_shadowRadius = 0.25f;
+	float m_shadowRadiusPixels = 25.0f;
 	int32_t m_shadowSteps = 8;
 	bool m_moveLight = true;
-	bool m_useSoftContactShadows = true;
+	int32_t m_contactShadowsMode = 0;
 	bool m_useScreenSpaceRadius = false;
-
-	bool m_enableTxaa = false;
-	float m_feedbackMin = 0.8f;
-	float m_feedbackMax = 0.95f;
-	bool m_applyMitchellFilter = true;
-	bool m_useTxaaSlow = false;
 };
 
 } // namespace

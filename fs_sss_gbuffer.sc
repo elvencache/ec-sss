@@ -1,4 +1,4 @@
-$input v_normal, v_texcoord0, v_texcoord1, v_texcoord2, v_texcoord3
+$input v_normal, v_texcoord0, v_texcoord1
 
 #include "../common/common.sh"
 #include "parameters.sh"
@@ -45,7 +45,7 @@ void main()
 	normalMap.xy = normalMap.yx;
 
 	// perturb geometry normal by normal map
-	vec3 pos = v_texcoord2.xyz; // contains world space pos
+	vec3 pos = v_texcoord1.xyz; // contains world space pos
 	mat3 TBN = cotangentFrame(normal, pos, v_texcoord0);
 	vec3 bumpedNormal = normalize(instMul(TBN, normalMap));
 	
@@ -55,15 +55,8 @@ void main()
 	float roughness = normalMap.z * mix(0.9, 1.0, albedo.y);
 	roughness = roughness * 0.6 + 0.2;
 
-	// Calculate velocity as delta position from previous frame to this
-	vec2 previousNDC = v_texcoord1.xy * (1.0/v_texcoord1.w);
-	previousNDC.y *= -1.0;
-	previousNDC = previousNDC * 0.5 + 0.5;
-	vec2 velocity = gl_FragCoord.xy*u_viewTexel.xy - previousNDC;
-	
 	vec3 bufferNormal = NormalEncode(bumpedNormal);
 
 	gl_FragData[0] = vec4(toGamma(albedo), 1.0);
-	gl_FragData[1] = vec4(bufferNormal, roughness); // Todo, better packing
-	gl_FragData[2] = vec4(velocity, 0.0, 0.0);
+	gl_FragData[1] = vec4(bufferNormal, roughness);
 }
