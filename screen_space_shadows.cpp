@@ -763,7 +763,6 @@ public:
 	float m_view[16];
 	float m_proj[16];
 	float m_proj2[16];
-	float m_jitter[2];
 	int32_t m_size[2];
 
 	// UI parameters
