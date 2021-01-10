@@ -481,7 +481,6 @@ public:
 					meshSubmit(m_meshes[m_lightModel.mesh], view, m_sphereProgram, mtx);
 				}
 
-
 				++view;
 			}
 
