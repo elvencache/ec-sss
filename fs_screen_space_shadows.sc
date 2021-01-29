@@ -34,6 +34,9 @@ void main()
 	float linearDepth = texture2D(s_depth, texCoord).x;
 	vec3 viewSpacePosition = NDCToViewspace(texCoord, linearDepth);
 
+	// want distance for percentage closer style soft screen space shadows
+	float distanceToLight = length(u_lightPosition - viewSpacePosition);
+
 	vec3 lightStep = normalize(u_lightPosition - viewSpacePosition);
 
 	// screen space radius not usable directly. convert value given in pixels,
@@ -53,6 +56,9 @@ void main()
 	float initialOffset = (0.0 < u_useNoiseOffset) ? (0.5+random) : 1.0;
 	samplePosition += initialOffset * lightStep;
 
+	float lengthOfLightStep = (radius/u_shadowSteps);
+	float steppedDistanceToLight = distanceToLight - (initialOffset*lengthOfLightStep);
+
 	mat4 viewToProj = mat4(
 		u_viewToProj0,
 		u_viewToProj1,
@@ -63,6 +69,7 @@ void main()
 	float occluded = 0.0;
 	float softOccluded = 0.0;
 	float firstHit = u_shadowSteps;
+	float averageDistanceToBlocker = 0.0;
 	for (int i = 0; i < int(u_shadowSteps); ++i, samplePosition += lightStep)
 	{
 		vec3 psSamplePosition = instMul(viewToProj, vec4(samplePosition, 1.0)).xyw;
@@ -83,11 +90,55 @@ void main()
 			occluded += 1.0;
 			// for very soft occlusion
 			softOccluded += saturate(radius - delta);
+
+			// update average distance for pcsssss
+			averageDistanceToBlocker += steppedDistanceToLight;
 		}
+
+		// track the potential blocker distance, without
+		// re-measuring length of offset between points
+		steppedDistanceToLight -= lengthOfLightStep;
 	}
 
 	float shadow;
-	if (1.5 < u_contactShadowsMode)
+	if (2.5 < u_contactShadowsMode)
+	{
+		// percentage closer style soft screen space shadows
+
+		// percentage closer equation:
+		// penumbraWidth = (distanceToReceiver - distanceToBlocker) * lightWidth / distanceToBlocker;
+		// where distances are relative to light
+		// uses simliar triangles, assuming blocker, receiver, and light source are parallel
+		// don't have shadow map to search blockers, using linear search of screen space shadow ray march
+
+		// occluded contains number of hits
+		if (0 < occluded)
+		{
+			// take average of blockers? might be good if able to use penumbra width
+			// as-is, this introduces light areas where shadows over lap, like vsm artifacts...
+			//averageDistanceToBlocker /= occluded;
+
+			// what if we just use first hit? looks better to me when just visualizing the pw result
+			averageDistanceToBlocker = distanceToLight - (initialOffset + 1.0 + firstHit) * lengthOfLightStep;
+
+			// assume widthOfLight is 1.0 for now
+			float widthOfLight = 1.0;
+			float widthOfPenumbra = (distanceToLight - averageDistanceToBlocker) * widthOfLight / averageDistanceToBlocker;
+
+			// then pcss uses penumbra width to drive filter for percentage closer filtering shadows
+			// don't see a great way to emulate pcf in this context, adding this was maybe not a great way to determine shadows!
+			// eyeballing results, penumbra seems to be roughly between 0 and 0.1 given current scene, so scale that up for result
+			shadow = smoothstep(0.0, 0.1, widthOfPenumbra);
+
+			// pow2 shadows look better
+			shadow = shadow*shadow;
+		}
+		else
+		{
+			shadow = 1.0; // unoccluded
+		}
+	}
+	else if (1.5 < u_contactShadowsMode)
 	{
 		// very soft occlusion, includes distance falloff above
 		shadow = softOccluded * (1.0 - (firstHit / u_shadowSteps));

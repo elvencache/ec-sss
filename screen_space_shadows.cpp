@@ -600,7 +600,7 @@ public:
 				if (ImGui::IsItemHovered())
 					ImGui::SetTooltip("number of steps/samples to take between shaded pixel and radius");
 
-				ImGui::Combo("contact shadows mode", &m_contactShadowsMode, "hard\0soft\0very soft\0\0");
+				ImGui::Combo("contact shadows mode", &m_contactShadowsMode, "hard\0soft\0very soft\0pcsssss\0\0");
 				if (ImGui::IsItemHovered())
 				{
 					ImGui::BeginTooltip();
@@ -610,6 +610,8 @@ public:
 					ImGui::BulletText("modulate shadow by distance to first occluder");
 					ImGui::Text("very soft");
 					ImGui::BulletText("also reduce each shadow contribution by distance");
+					ImGui::Text("percentage closer style soft screen space shadows");
+					ImGui::BulletText("mimic calculation of pcss, but can't use penumbra well");
 					ImGui::EndTooltip();
 				}
 
